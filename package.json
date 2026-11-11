@@ -1,0 +1,18 @@
+{
+  "name": "stand-up-timer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reminds you to stand up while working. Web app plus an Android build via Capacitor.",
+  "scripts": {
+    "android:add": "cap add android",
+    "android:sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.0",
+    "@capacitor/core": "8.6.0",
+    "@capacitor/local-notifications": "8.3.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.0"
+  }
+}

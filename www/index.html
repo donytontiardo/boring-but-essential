@@ -1,0 +1,358 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stand-Up Timer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one centered column; a ring timer on top, the routine controls under it, today's log at the bottom. */
+:root {
+  --bg: #eef1f3;
+  --surface: #ffffff;
+  --fg: #18222b;
+  --muted: #5d6b76;
+  --line: #d5dce1;
+  --sit: #b8741a;      /* sitting phase */
+  --stand: #23806b;    /* standing / moving phase */
+  --track: #dfe5e9;
+  --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12181d; --surface: #1a2229; --fg: #e6ecef; --muted: #93a2ad; --line: #2b3640;
+    --sit: #e0a24a; --stand: #4cc3a5; --track: #26313a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12181d; --surface: #1a2229; --fg: #e6ecef; --muted: #93a2ad; --line: #2b3640;
+  --sit: #e0a24a; --stand: #4cc3a5; --track: #26313a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { min-height: 100%; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-block: 32px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+main { max-width: 520px; margin: 0 auto; display: grid; gap: 28px; }
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; margin: 0; letter-spacing: -0.01em; }
+.sub { color: var(--muted); font-size: 0.85rem; }
+.label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+
+.dial { position: relative; width: min(300px, 80vw); aspect-ratio: 1; max-width: 100%; margin: 0 auto; }
+.dial svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.dial circle { fill: none; stroke-width: 10; }
+.dial .track { stroke: var(--track); }
+.dial .prog { stroke: var(--sit); stroke-linecap: round; transition: stroke-dashoffset .4s linear, stroke .3s; }
+body[data-phase="stand"] .dial .prog, body[data-phase="due"] .dial .prog { stroke: var(--stand); }
+.readout { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 4px; }
+.phase { font-family: var(--font-display); font-weight: 500; font-size: 1rem; color: var(--sit); }
+body[data-phase="stand"] .phase, body[data-phase="due"] .phase { color: var(--stand); }
+.time { font-family: var(--font-mono); font-size: clamp(2.6rem, 12vw, 3.6rem); font-variant-numeric: tabular-nums; line-height: 1; }
+.next { color: var(--muted); font-size: 0.82rem; }
+body[data-phase="due"] .dial { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { transform: scale(1.03); } }
+@media (prefers-reduced-motion: reduce) { body[data-phase="due"] .dial { animation: none; } .dial .prog { transition: none; } }
+
+.controls { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+button {
+  font: 600 0.92rem var(--font-body); border-radius: 10px; padding: 11px 18px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+}
+button.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+body[data-phase="due"] button.primary { background: var(--stand); border-color: var(--stand); color: #fff; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--stand); outline-offset: 2px; }
+button:disabled { opacity: .45; cursor: default; }
+
+.banner {
+  border: 1px solid var(--stand); color: var(--fg); background: var(--surface); border-radius: 12px;
+  padding: 14px 16px; display: grid; gap: 4px;
+}
+.banner strong { font-family: var(--font-display); color: var(--stand); font-size: 1.05rem; }
+
+section { display: grid; gap: 12px; }
+.routines { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.routine {
+  text-align: left; display: grid; gap: 2px; padding: 12px 14px; font-weight: 500;
+}
+.routine b { font-family: var(--font-mono); font-weight: 500; font-size: 0.95rem; }
+.routine span { color: var(--muted); font-size: 0.8rem; }
+.routine[aria-pressed="true"] { border-color: var(--stand); box-shadow: inset 0 0 0 1px var(--stand); }
+.custom { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+.custom label { display: grid; gap: 4px; font-size: 0.82rem; color: var(--muted); }
+.custom input {
+  width: 92px; font: 500 1rem var(--font-mono); padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+}
+.toggles { display: grid; gap: 8px; }
+.toggles label { display: flex; gap: 10px; align-items: center; font-size: 0.9rem; }
+.toggles input { width: 18px; height: 18px; accent-color: var(--stand); }
+.hint { color: var(--muted); font-size: 0.8rem; margin: 0; }
+
+.today { display: flex; gap: 24px; flex-wrap: wrap; }
+.stat b { display: block; font-family: var(--font-mono); font-size: 1.6rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 0.8rem; }
+.bars { display: flex; gap: 3px; align-items: end; height: 28px; }
+.bars i { width: 8px; border-radius: 2px; background: var(--stand); display: block; }
+.bars i.missed { background: var(--track); }
+hr { border: 0; border-top: 1px solid var(--line); margin: 0; width: 100%; }
+</style>
+</head><body>
+
+<main>
+  <header>
+    <h1>Stand-Up Timer</h1>
+    <span class="sub" id="routineName">20 · 8 · 2 routine</span>
+  </header>
+
+  <div class="dial" aria-live="polite">
+    <svg viewBox="0 0 120 120" aria-hidden="true">
+      <circle class="track" cx="60" cy="60" r="52"></circle>
+      <circle class="prog" id="prog" cx="60" cy="60" r="52"></circle>
+    </svg>
+    <div class="readout">
+      <div class="phase" id="phase">Sitting</div>
+      <div class="time" id="time">20:00</div>
+      <div class="next" id="next">Press Start to begin</div>
+    </div>
+  </div>
+
+  <div class="banner" id="banner" hidden>
+    <strong>Time to stand up</strong>
+    <span id="bannerText">Stand for 8 minutes, then walk or stretch for 2.</span>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="mainBtn">Start</button>
+    <button id="snoozeBtn" hidden>Snooze 5 min</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+
+  <hr>
+
+  <section aria-labelledby="rLabel">
+    <div class="label" id="rLabel">Routine</div>
+    <div class="routines" id="routines"></div>
+    <div class="custom">
+      <label for="sitMin">Sit (min)<input id="sitMin" type="number" min="1" max="180" value="20"></label>
+      <label for="standMin">Stand + move (min)<input id="standMin" type="number" min="1" max="60" value="10"></label>
+    </div>
+  </section>
+
+  <section aria-labelledby="aLabel">
+    <div class="label" id="aLabel">Alerts</div>
+    <div class="toggles">
+      <label for="soundOn"><input type="checkbox" id="soundOn" checked> Chime when it's time</label>
+      <label for="notifyOn"><input type="checkbox" id="notifyOn"> Desktop notification</label>
+      <label for="autoOn"><input type="checkbox" id="autoOn"> Start the next sitting block automatically</label>
+    </div>
+    <p class="hint" id="notifyHint">Keep this tab open. The tab title also shows the countdown.</p>
+  </section>
+
+  <hr>
+
+  <section aria-labelledby="tLabel">
+    <div class="label" id="tLabel">Today</div>
+    <div class="today">
+      <div class="stat"><b id="statStands">0</b><span>times stood up</span></div>
+      <div class="stat"><b id="statStandMin">0</b><span>minutes on your feet</span></div>
+      <div class="stat"><b id="statSnooze">0</b><span>snoozes</span></div>
+    </div>
+    <div class="bars" id="bars" aria-hidden="true"></div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const ROUTINES = [
+    { id: "2082", sit: 20, stand: 10, name: "20 · 8 · 2", note: "Sit 20, stand 8, move 2" },
+    { id: "305",  sit: 30, stand: 5,  name: "30 · 5", note: "Short breaks, often" },
+    { id: "455",  sit: 45, stand: 5,  name: "45 · 5", note: "Longer focus blocks" },
+    { id: "5010", sit: 50, stand: 10, name: "50 · 10", note: "Classic hourly break" },
+  ];
+  const $ = id => document.getElementById(id);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("standup:" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("standup:" + k, JSON.stringify(v)); } catch {} },
+  };
+  const todayKey = () => new Date().toISOString().slice(0, 10);
+
+  let cfg = store.get("cfg", { sit: 20, stand: 10, routine: "2082", sound: true, notify: false, auto: false });
+  let log = store.get("log", { day: todayKey(), stands: 0, standMin: 0, snoozes: 0, marks: [] });
+  if (log.day !== todayKey()) log = { day: todayKey(), stands: 0, standMin: 0, snoozes: 0, marks: [] };
+
+  // phase: idle | sit | due | stand ; endsAt is a wall-clock timestamp so background throttling never drifts.
+  let phase = "idle", endsAt = 0, total = cfg.sit * 60, paused = null, standStart = 0, ticker = null, dueBeep = null;
+  // Restore a running timer after the page or app was closed.
+  const run = store.get("run", null);
+  if (run && ["sit", "due", "stand"].includes(run.phase)) ({ phase, endsAt, total, paused, standStart } = run);
+
+  // Android app (Capacitor): schedule real phone notifications so reminders arrive even when the app is closed.
+  const Native = (() => {
+    try {
+      const Cap = window.Capacitor;
+      if (!Cap || !Cap.isNativePlatform || !Cap.isNativePlatform()) return null;
+      return (Cap.Plugins && Cap.Plugins.LocalNotifications) || (Cap.registerPlugin && Cap.registerPlugin("LocalNotifications")) || null;
+    } catch { return null; }
+  })();
+  if (Native) {
+    try { Native.createChannel({ id: "standup", name: "Stand-up reminders", importance: 5, vibration: true, visibility: 1 }); } catch {}
+  }
+  const NATIVE_IDS = [1, 2, 3, 4, 5];
+  let lastRunKey = "";
+  async function syncNative() {
+    if (!Native) return;
+    try {
+      await Native.cancel({ notifications: NATIVE_IDS.map(id => ({ id })) });
+      const n = [], mk = (id, at, title, body) => n.push({ id, title, body, channelId: "standup", schedule: { at: new Date(at), allowWhileIdle: true } });
+      const now = Date.now();
+      if (phase === "sit" && paused == null) {
+        mk(1, endsAt, "Time to stand up", `You've been sitting ${Math.round(total / 60)} min. Stand for ${cfg.stand}.`);
+        [2, 5, 10].forEach((m, i) => mk(2 + i, endsAt + m * 60000, "Still sitting?", "Stand up, then tap I'm standing in the app."));
+      } else if (phase === "due") {
+        [2, 5, 10].forEach((m, i) => mk(2 + i, now + m * 60000, "Still sitting?", "Stand up, then tap I'm standing in the app."));
+      } else if (phase === "stand") {
+        mk(5, endsAt, "Break's over", "Sit back down and open the app to start the next block.");
+      }
+      if (n.length) await Native.schedule({ notifications: n });
+    } catch {}
+  }
+  function persist() {
+    const key = [phase, Math.round(endsAt / 1000), paused == null ? "" : "p"].join("|");
+    if (key === lastRunKey) return;
+    lastRunKey = key;
+    store.set("run", { phase, endsAt, total, paused, standStart });
+    syncNative();
+  }
+
+  const C = 2 * Math.PI * 52;
+  $("prog").style.strokeDasharray = C;
+
+  function fmt(s) { s = Math.max(0, Math.ceil(s)); return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
+  function save() { store.set("cfg", cfg); store.set("log", log); }
+
+  function renderRoutines() {
+    $("routines").innerHTML = "";
+    ROUTINES.forEach(r => {
+      const b = document.createElement("button");
+      b.className = "routine"; b.type = "button";
+      b.setAttribute("aria-pressed", cfg.routine === r.id);
+      b.innerHTML = `<b>${r.name}</b><span>${r.note}</span>`;
+      b.onclick = () => { cfg.routine = r.id; cfg.sit = r.sit; cfg.stand = r.stand; syncInputs(); applyCfg(); };
+      $("routines").appendChild(b);
+    });
+    const r = ROUTINES.find(r => r.id === cfg.routine);
+    $("routineName").textContent = r ? r.name + " routine" : `Custom · ${cfg.sit} / ${cfg.stand} min`;
+  }
+  function syncInputs() { $("sitMin").value = cfg.sit; $("standMin").value = cfg.stand; }
+  function applyCfg() { save(); renderRoutines(); if (phase === "idle") { total = cfg.sit * 60; render(); } }
+
+  function render() {
+    document.body.dataset.phase = phase;
+    const left = phase === "idle" ? total : paused != null ? paused : (endsAt - Date.now()) / 1000;
+    const frac = phase === "due" ? 1 : Math.min(1, Math.max(0, left / total));
+    $("prog").style.strokeDashoffset = C * (1 - frac);
+    $("banner").hidden = phase !== "due";
+    $("snoozeBtn").hidden = phase !== "due";
+    const main = $("mainBtn");
+    if (phase === "idle") { $("phase").textContent = "Sitting"; $("time").textContent = fmt(total); $("next").textContent = "Press Start to begin"; main.textContent = "Start"; }
+    if (phase === "sit") { $("phase").textContent = paused != null ? "Paused" : "Sitting"; $("time").textContent = fmt(left); $("next").textContent = "Then stand for " + cfg.stand + " min"; main.textContent = paused != null ? "Resume" : "Pause"; }
+    if (phase === "due") { $("phase").textContent = "Stand up now"; $("time").textContent = fmt(cfg.stand * 60); $("next").textContent = "Press the button once you're up"; main.textContent = "I'm standing"; }
+    if (phase === "stand") { $("phase").textContent = "Standing"; $("time").textContent = fmt(left); $("next").textContent = left < 120 && cfg.stand >= 5 ? "Walk or stretch for the last bit" : "Back to sitting after this"; main.textContent = "Done, sit back down"; }
+    persist();
+    document.title = phase === "idle" ? "Stand-Up Timer" : phase === "due" ? "🔔 STAND UP" : `${fmt(left)} · ${phase === "sit" ? "Sitting" : "Standing"}`;
+    $("statStands").textContent = log.stands; $("statStandMin").textContent = Math.round(log.standMin); $("statSnooze").textContent = log.snoozes;
+    $("bars").innerHTML = log.marks.slice(-40).map(m => `<i class="${m === "s" ? "" : "missed"}" style="height:${m === "s" ? 100 : 40}%"></i>`).join("");
+  }
+
+  // Sound: a soft two-note chime from WebAudio (no files needed). Audio unlocks on the first click.
+  let ac = null;
+  function chime() {
+    if (!cfg.sound) return;
+    try {
+      ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+      const t = ac.currentTime;
+      [[660, 0], [880, 0.22], [660, 0.9], [880, 1.12]].forEach(([f, d]) => {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.type = "sine"; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.25, t + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.6);
+        o.connect(g).connect(ac.destination); o.start(t + d); o.stop(t + d + 0.65);
+      });
+    } catch {}
+  }
+  function notify(title, body) {
+    if (!cfg.notify || !("Notification" in window) || Notification.permission !== "granted") return;
+    try { const n = new Notification(title, { body, requireInteraction: true, tag: "standup" }); n.onclick = () => { window.focus(); n.close(); }; } catch {}
+  }
+
+  function startSit(seconds) {
+    phase = "sit"; total = cfg.sit * 60; endsAt = Date.now() + (seconds ?? total) * 1000; paused = null;
+    clearInterval(dueBeep); render();
+  }
+  function becomeDue() {
+    phase = "due"; render(); chime();
+    notify("Time to stand up", `You've been sitting ${cfg.sit} min. Stand for ${cfg.stand}.`);
+    clearInterval(dueBeep); dueBeep = setInterval(() => { if (phase === "due") chime(); }, 60000); // nag once a minute
+  }
+  function startStand() {
+    clearInterval(dueBeep);
+    phase = "stand"; total = cfg.stand * 60; endsAt = Date.now() + total * 1000; standStart = Date.now();
+    log.stands++; log.marks.push("s"); save(); render();
+  }
+  function endStand(early) {
+    log.standMin += (Date.now() - standStart) / 60000; save();
+    if (!early) { chime(); notify("Break's over", "Sit back down. Next reminder in " + cfg.sit + " min."); }
+    if (cfg.auto || early) startSit(); else { phase = "idle"; total = cfg.sit * 60; render(); }
+  }
+
+  function tick() {
+    if (phase === "sit" && paused == null && Date.now() >= endsAt) becomeDue();
+    else if (phase === "stand" && Date.now() >= endsAt) endStand(false);
+    else render();
+  }
+
+  $("mainBtn").onclick = () => {
+    if (ac && ac.state === "suspended") ac.resume();
+    if (!ac && cfg.sound) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }
+    if (Native && phase === "idle") { try { Native.requestPermissions(); } catch {} }
+    if (phase === "idle") startSit();
+    else if (phase === "sit") { if (paused != null) { endsAt = Date.now() + paused * 1000; paused = null; } else paused = (endsAt - Date.now()) / 1000; render(); }
+    else if (phase === "due") startStand();
+    else if (phase === "stand") endStand(true);
+  };
+  $("snoozeBtn").onclick = () => { log.snoozes++; log.marks.push("z"); save(); phase = "sit"; total = 5 * 60; endsAt = Date.now() + total * 1000; paused = null; clearInterval(dueBeep); render(); };
+  $("resetBtn").onclick = () => { phase = "idle"; paused = null; clearInterval(dueBeep); total = cfg.sit * 60; render(); };
+
+  const clampNum = (v, lo, hi, d) => { v = parseInt(v, 10); return isNaN(v) ? d : Math.min(hi, Math.max(lo, v)); };
+  $("sitMin").onchange = e => { cfg.sit = clampNum(e.target.value, 1, 180, 20); cfg.routine = "custom"; syncInputs(); applyCfg(); };
+  $("standMin").onchange = e => { cfg.stand = clampNum(e.target.value, 1, 60, 10); cfg.routine = "custom"; syncInputs(); applyCfg(); };
+  $("soundOn").checked = cfg.sound; $("autoOn").checked = cfg.auto;
+  $("soundOn").onchange = e => { cfg.sound = e.target.checked; save(); if (cfg.sound) chime(); };
+  $("autoOn").onchange = e => { cfg.auto = e.target.checked; save(); };
+
+  const hasNotify = "Notification" in window;
+  $("notifyOn").checked = cfg.notify && hasNotify && Notification.permission === "granted";
+  $("notifyOn").onchange = async e => {
+    if (!e.target.checked) { cfg.notify = false; save(); return; }
+    let p = "denied";
+    try { p = hasNotify ? (Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission) : "denied"; } catch {}
+    cfg.notify = p === "granted"; e.target.checked = cfg.notify; save();
+    $("notifyHint").textContent = cfg.notify
+      ? "Notifications are on. Keep this tab open; it can sit in the background."
+      : "This page can't show desktop notifications here. Download the file and open it in Chrome, Edge or Firefox to get them. The chime and tab title still work.";
+  };
+
+  if (Native) {
+    $("notifyOn").closest("label").hidden = true;
+    $("notifyHint").textContent = "Reminders arrive as phone notifications, even when the app is closed.";
+  }
+  syncInputs(); renderRoutines(); render();
+  ticker = setInterval(tick, 500);
+  document.addEventListener("visibilitychange", tick);
+})();
+</script>
+</body></html>

@@ -1,0 +1,10 @@
+{
+  "appId": "io.github.donytontiardo.standup",
+  "appName": "Stand-Up Timer",
+  "webDir": "www",
+  "plugins": {
+    "LocalNotifications": {
+      "iconColor": "#23806B"
+    }
+  }
+}

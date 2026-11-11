@@ -1,0 +1,58 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Android project
+        run: |
+          npx cap add android
+          # Exact alarms so the stand-up reminder fires on time, even in battery saver.
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />#' android/app/src/main/AndroidManifest.xml
+          npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk stand-up-timer.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stand-up-timer-apk
+          path: stand-up-timer.apk
+
+      - name: Publish to the "Latest APK" release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete apk-latest --yes --cleanup-tag || true
+          gh release create apk-latest stand-up-timer.apk \
+            --title "Latest APK" \
+            --notes "Debug build of Stand-Up Timer from commit ${GITHUB_SHA::7}. Open this page on your Android phone and tap stand-up-timer.apk to install." \
+            --target "$GITHUB_SHA"
